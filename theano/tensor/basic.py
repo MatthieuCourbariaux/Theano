@@ -1137,9 +1137,9 @@ _convert_to_uint64 = _conversion(
     elemwise.Elemwise(scal.convert_to_uint64), 'uint64')
 """Cast to unsigned 64-bit integer"""
 
-# _convert_to_float16 = _conversion(
-    # elemwise.Elemwise(scal.convert_to_float16), 'float16')
-# """Cast to half-precision floating point"""
+_convert_to_float16 = _conversion(
+    elemwise.Elemwise(scal.convert_to_float16), 'float16')
+"""Cast to half-precision floating point"""
 
 _convert_to_float32 = _conversion(
     elemwise.Elemwise(scal.convert_to_float32), 'float32')
@@ -1166,7 +1166,7 @@ _cast_mapping = {
     'uint16': _convert_to_uint16,
     'uint32': _convert_to_uint32,
     'uint64': _convert_to_uint64,
-    # 'float16': _convert_to_float16,
+    'float16': _convert_to_float16,
     'float32': _convert_to_float32,
     'float64': _convert_to_float64,
     'complex64': _convert_to_complex64,

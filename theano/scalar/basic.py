@@ -231,7 +231,7 @@ class Scalar(Type):
                 print dtype, np.zeros(1, dtype=dtype).dtype.num
             """
             return {  # dtype: (py_type, c_type, cls_name)
-                    # 'float16': (numpy.float16, 'npy_uint16', 'Float16'),
+                    'float16': (numpy.float16, 'npy_uint16', 'Float16'),
                     'float32': (numpy.float32, 'npy_float32', 'Float32'),
                     'float64': (numpy.float64, 'npy_float64', 'Float64'),
                     'complex128': (numpy.complex128, 'theano_complex128',
@@ -501,7 +501,7 @@ uint8 = get_scalar_type('uint8')
 uint16 = get_scalar_type('uint16')
 uint32 = get_scalar_type('uint32')
 uint64 = get_scalar_type('uint64')
-# float16 = get_scalar_type('float16')
+float16 = get_scalar_type('float16')
 float32 = get_scalar_type('float32')
 float64 = get_scalar_type('float64')
 complex64 = get_scalar_type('complex64')
@@ -509,7 +509,7 @@ complex128 = get_scalar_type('complex128')
 
 int_types = int8, int16, int32, int64
 uint_types = uint8, uint16, uint32, uint64
-float_types = float32, float64
+float_types = float16, float32, float64
 complex_types = complex64, complex128
 
 discrete_types = int_types + uint_types
@@ -1878,9 +1878,27 @@ class Cast(UnaryScalarOp):
         return self.ctor(input)
 
     def c_code(self, node, name, (x, ), (z, ), sub):
+        
+        # The case of float16 is a little bit special
+        # we are using CUDA built-in functions, which means it does only work on Nvidia GPUs
+        # I should move this part to sandbox.gpuarray ... ?
+        i_type = node.inputs[0].type.dtype
+        o_type = node.outputs[0].type.dtype
+        
+        if o_type == 'float16':
+            if i_type == 'float32':
+                return "%(z)s = __float2half_rn(%(x)s);" % locals()
+            else:
+                return "%(z)s = __float2half_rn((npy_float32)%(x)s);" % locals()
+                
+        if i_type == 'float16':
+            if o_type == 'float32':
+                return "%(z)s = __half2float(%(x)s);" % locals() 
+            else:
+                return "%s = (%s)__half2float(%s);" % (z, node.outputs[0].type.dtype_specs()[1], x) 
+        
+        # general case
         return "%s = (%s)%s;" % (z, node.outputs[0].type.dtype_specs()[1], x)
-    # def c_code(self, node, name, (x, ), (z, ), sub):
-        # return "%s = __float2half_rn(%s);" % (z, x)
 
     def grad(self, (x, ), (gz, )):
         if self.o_type in continuous_types:
@@ -1903,7 +1921,7 @@ convert_to_uint8 = Cast(uint8, name='convert_to_uint8')
 convert_to_uint16 = Cast(uint16, name='convert_to_uint16')
 convert_to_uint32 = Cast(uint32, name='convert_to_uint32')
 convert_to_uint64 = Cast(uint64, name='convert_to_uint64')
-# convert_to_float16 = Cast(float16, name='convert_to_float16')
+convert_to_float16 = Cast(float16, name='convert_to_float16')
 convert_to_float32 = Cast(float32, name='convert_to_float32')
 convert_to_float64 = Cast(float64, name='convert_to_float64')
 convert_to_complex64 = Cast(complex64, name='convert_to_complex64')
@@ -1918,7 +1936,7 @@ _cast_mapping = {
            'uint16': convert_to_uint16,
            'uint32': convert_to_uint32,
            'uint64': convert_to_uint64,
-           # 'float16': convert_to_float16,
+           'float16': convert_to_float16,
            'float32': convert_to_float32,
            'float64': convert_to_float64,
            'complex64': convert_to_complex64,
