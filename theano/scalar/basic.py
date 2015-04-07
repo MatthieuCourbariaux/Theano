@@ -231,6 +231,7 @@ class Scalar(Type):
                 print dtype, np.zeros(1, dtype=dtype).dtype.num
             """
             return {  # dtype: (py_type, c_type, cls_name)
+                    # 'float16': (numpy.float16, 'npy_uint16', 'Float16'),
                     'float32': (numpy.float32, 'npy_float32', 'Float32'),
                     'float64': (numpy.float64, 'npy_float64', 'Float64'),
                     'complex128': (numpy.complex128, 'theano_complex128',
@@ -500,6 +501,7 @@ uint8 = get_scalar_type('uint8')
 uint16 = get_scalar_type('uint16')
 uint32 = get_scalar_type('uint32')
 uint64 = get_scalar_type('uint64')
+# float16 = get_scalar_type('float16')
 float32 = get_scalar_type('float32')
 float64 = get_scalar_type('float64')
 complex64 = get_scalar_type('complex64')
@@ -1877,6 +1879,8 @@ class Cast(UnaryScalarOp):
 
     def c_code(self, node, name, (x, ), (z, ), sub):
         return "%s = (%s)%s;" % (z, node.outputs[0].type.dtype_specs()[1], x)
+    # def c_code(self, node, name, (x, ), (z, ), sub):
+        # return "%s = __float2half_rn(%s);" % (z, x)
 
     def grad(self, (x, ), (gz, )):
         if self.o_type in continuous_types:
@@ -1890,7 +1894,7 @@ class Cast(UnaryScalarOp):
             return (3,) + s
         else:
             return s
-
+            
 convert_to_int8 = Cast(int8, name='convert_to_int8')
 convert_to_int16 = Cast(int16, name='convert_to_int16')
 convert_to_int32 = Cast(int32, name='convert_to_int32')
@@ -1899,6 +1903,7 @@ convert_to_uint8 = Cast(uint8, name='convert_to_uint8')
 convert_to_uint16 = Cast(uint16, name='convert_to_uint16')
 convert_to_uint32 = Cast(uint32, name='convert_to_uint32')
 convert_to_uint64 = Cast(uint64, name='convert_to_uint64')
+# convert_to_float16 = Cast(float16, name='convert_to_float16')
 convert_to_float32 = Cast(float32, name='convert_to_float32')
 convert_to_float64 = Cast(float64, name='convert_to_float64')
 convert_to_complex64 = Cast(complex64, name='convert_to_complex64')
@@ -1913,6 +1918,7 @@ _cast_mapping = {
            'uint16': convert_to_uint16,
            'uint32': convert_to_uint32,
            'uint64': convert_to_uint64,
+           # 'float16': convert_to_float16,
            'float32': convert_to_float32,
            'float64': convert_to_float64,
            'complex64': convert_to_complex64,
