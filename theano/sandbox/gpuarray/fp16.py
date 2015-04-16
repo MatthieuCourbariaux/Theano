@@ -1,6 +1,14 @@
-from theano import Op, Apply
+import numpy
+import theano
+from theano import Op, Apply, Variable, tensor
 
-from .basic_ops import as_gpuarray_variable
+from theano.compile import optdb
+from theano.gof import local_optimizer
+from theano.scalar import as_scalar, constant
+
+from . import opt
+from .basic_ops import as_gpuarray_variable, gpu_alloc, gpu_from_host
+from .opt_util import alpha_merge, output_merge
 
 try:
     from nervanagpu.nervanagpu import GPUTensor
@@ -12,6 +20,18 @@ def to_gputensor(a):
     assert a.flags.c_contiguous or a.flags.f_contiguous
     return GPUTensor(a.shape, dtype=a.dtype, base=a, gpudata=a.gpudata,
                      strides=a.strides, is_trans=a.flags.f_contiguous)
+
+
+def ensure_float(val, name):
+    if not isinstance(val, Variable):
+        val = constant(val)
+    if hasattr(val, 'ndim') and val.ndim == 0:
+        val = as_scalar(val)
+    if not isinstance(val.type, theano.scalar.Scalar):
+        raise TypeError("%s: expected a scalar value" % (name,))
+    if not val.type.dtype == 'float32':
+        raise TypeError("%s: type is not float32" % (name,))
+    return val
 
 
 class Gemm16(Op):
@@ -29,6 +49,9 @@ class Gemm16(Op):
         B = as_gpuarray_variable(B)
         C = as_gpuarray_variable(C)
 
+        alpha = ensure_float(alpha, 'alpha')
+        beta = ensure_float(beta, 'beta')
+
         assert C.dtype == A.dtype == B.dtype == 'float16'
 
         return Apply(self, [C, alpha, A, B, beta], [C.type()])
@@ -43,5 +66,43 @@ class Gemm16(Op):
         At = to_gputensor(A)
         Bt = to_gputensor(B)
         Ct = to_gputensor(C)
-        outputs[0][0] = At.dot(At, Bt, Ct, alpha=alpha, beta=beta,
-                               relu=self.relu)
+        At.dot(At, Bt, Ct, alpha=alpha, beta=beta, relu=self.relu)
+        outputs[0][0] = C
+
+
+@opt.register_opt()
+@local_optimizer([tensor.Dot])
+def local_dot_to_gemm16(node):
+    if (type(node.op) == tensor.Dot and
+            node.inputs[0].dtype == 'float16' and
+            node.inputs[1].dtype == 'float16' and
+            node.inputs[0].ndim == 2 and node.inputs[1].ndim == 2):
+        A = gpu_from_host(node.inputs[0])
+        B = gpu_from_host(node.inputs[1])
+        C = gpu_alloc(numpy.asarray(0, dtype='float16'),
+                      A.shape[0], B.shape[1])
+        return [Gemm16()(C, 1.0, A, B, 0.0)]
+
+
+@opt.register_opt()
+@alpha_merge(Gemm16, alpha_in=1, beta_in=4, nd=2)
+def local_gemm16_alpha_merge(node, *inputs):
+    return [Gemm16(relu=node.op.relu)(*inputs)]
+
+
+@opt.register_opt()
+@output_merge(Gemm16, alpha_in=1, beta_in=4, out_in=0, nd=2)
+def local_gemm16_output_merge(node, *inputs):
+    return [Gemm16(relu=node.op.relu)(*inputs)]
+
+
+@local_optimizer([Gemm16], inplace=True)
+def local_gemm16_inplace(node):
+    if type(node.op) != Gemm16 or node.op.inplace:
+        return
+    return [Gemm16(relu=node.op.relu, inplace=True)(*node.inputs)]
+
+optdb.register('local_gemm16_inplace',
+               tensor.opt.in2out(local_gemm16_inplace,
+                                 name='local_gemm16_inplace'),
+               70.0, 'fast_run', 'inplace', 'gpuarray')
