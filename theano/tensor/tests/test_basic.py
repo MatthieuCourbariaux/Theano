@@ -5750,40 +5750,24 @@ def _test_autocast_custom():
     orig_autocast = autocast_float.dtypes
 
     # Test that autocast_float_as sets the autocast dtype correctly
-    try:  # ghetto 2.4 version of with
-        ac = autocast_float_as('float32')
-        ac.__enter__()
+    with autocast_float_as('float32'):
         assert autocast_float.dtypes == ('float32',)
-    finally:
-        ac.__exit__()
     assert autocast_float.dtypes == orig_autocast
-    try:  # ghetto 2.4 version of with
-        ac = autocast_float_as('float64')
-        ac.__enter__()
+
+    with autocast_float_as('float64'):
         assert autocast_float.dtypes == ('float64',)
-    finally:
-        ac.__exit__()
     assert autocast_float.dtypes == orig_autocast
+
     # Test that we can set it back to something, and nest it
-    try:  # ghetto 2.4 version of with
-        ac = autocast_float_as('float32')
-        ac.__enter__()
+    with autocast_float_as('float32'):
         assert autocast_float.dtypes == ('float32',)
-        try:  # ghetto 2.4 version of with
-            ac2 = autocast_float_as('float64')
-            ac2.__enter__()
+        with autocast_float_as('float64'):
             assert autocast_float.dtypes == ('float64',)
-        finally:
-            ac2.__exit__()
         assert autocast_float.dtypes == ('float32',)
-    finally:
-        ac.__exit__()
     assert autocast_float.dtypes == orig_autocast
 
     # Test that the autocasting dtype is used correctly in expression-building
-    try:  # ghetto 2.4 version of with
-        ac = autocast_float_as('float32')
-        ac.__enter__()
+    with autocast_float_as('float32'):
         assert (dvector() + 1.1).dtype == 'float64'
         assert (fvector() + 1.1).dtype == 'float32'
         assert (fvector() + theano._asarray(1.1, dtype='float64')).dtype == \
@@ -5793,13 +5777,9 @@ def _test_autocast_custom():
 
         assert (dvector() + 1).dtype == 'float64'
         assert (fvector() + 1).dtype == 'float32'
-    finally:
-        ac.__exit__()
 
     # Test that the autocasting dtype is used correctly in expression-building
-    try:  # ghetto 2.4 version of with
-        ac = autocast_float_as('float64')
-        ac.__enter__()
+    with autocast_float_as('float64'):
         assert (dvector() + 1.1).dtype == 'float64'
         assert (fvector() + 1.1).dtype == 'float64'
         assert (fvector() + 1.0).dtype == 'float64'
@@ -5810,13 +5790,9 @@ def _test_autocast_custom():
 
         assert (dvector() + 1).dtype == 'float64'
         assert (fvector() + 1).dtype == 'float32'
-    finally:
-        ac.__exit__()
 
     # Test that the autocasting dtype is used correctly in expression-building
-    try:  # ghetto 2.4 version of with
-        ac = autocast_float_as('float32', 'float64')
-        ac.__enter__()
+    with autocast_float_as('float32', 'float64'):
         assert (dvector() + 1.1).dtype == 'float64'
         assert (fvector() + 1.1).dtype == theano.config.floatX
         assert (fvector() + 1.0).dtype == 'float32'
@@ -5833,14 +5809,8 @@ def _test_autocast_custom():
         assert (ivector() + numpy.int8(1)).dtype == 'int32'
         assert (wvector() + numpy.int8(1)).dtype == 'int16'
         assert (bvector() + numpy.int8(1)).dtype == 'int8'
-        try:  # ghetto 2.4 version of with
-            ac2 = autocast_float_as('float64')
-            ac2.__enter__()
+        with autocast_float_as('float64'):
             assert (fvector() + 1.0).dtype == 'float64'
-        finally:
-            ac2.__exit__()
-    finally:
-        ac.__exit__()
 
 
 def _test_autocast_numpy():
