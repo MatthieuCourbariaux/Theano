@@ -39,6 +39,8 @@ class Gemm16(Op):
 
     def __init__(self, relu=False, inplace=False):
         self.relu = relu
+        # relu = True will require more work in optimizations.
+        assert self.relu == False
         self.inplace = inplace
 
     def make_node(self, C, alpha, A, B, beta):
