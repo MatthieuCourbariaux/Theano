@@ -7,18 +7,23 @@ from theano.gof import local_optimizer
 from theano.scalar import as_scalar, constant
 
 from . import opt
-from .basic_ops import as_gpuarray_variable, gpu_alloc, gpu_from_host
+from .basic_ops import (as_gpuarray_variable, gpu_alloc, gpu_from_host,
+                        host_from_gpu)
 from .opt_util import alpha_merge, output_merge
+from .pycuda_helper import ensure_pycuda_context
+
 
 try:
-    from nervanagpu.nervanagpu import GPUTensor
+    from nervanagpu.nervanagpu import GPUTensor, NervanaGPU
+    nerv = NervanaGPU()
 except ImportError:
     GPUTensor = None
 
 
 def to_gputensor(a):
     assert a.flags.c_contiguous or a.flags.f_contiguous
-    return GPUTensor(a.shape, dtype=a.dtype, base=a, gpudata=a.gpudata,
+    return GPUTensor(a.shape, dtype=a.dtype, base=a,
+                     gpudata=a.gpudata + a.offset,
                      strides=a.strides, is_trans=a.flags.f_contiguous)
 
 
@@ -36,12 +41,15 @@ def ensure_float(val, name):
 
 class Gemm16(Op):
     __props__ = ('relu', 'inplace')
+    _f16_ok = True
 
     def __init__(self, relu=False, inplace=False):
         self.relu = relu
         # relu = True will require more work in optimizations.
         assert self.relu == False
         self.inplace = inplace
+        if self.inplace:
+            self.destroy_map = {0: [0]}
 
     def make_node(self, C, alpha, A, B, beta):
         if GPUTensor is None:
@@ -59,7 +67,16 @@ class Gemm16(Op):
         return Apply(self, [C, alpha, A, B, beta], [C.type()])
 
     def perform(self, node, inputs, outputs):
+        ctx = ensure_pycuda_context()
         C, alpha, A, B, beta = inputs
+        # The nervana code does not support the case where both inputs
+        # are trans, so we need to copy one if them if that is the
+        # case. We copy the smaller one.
+        if A.flags.f_contiguous and B.flags.f_contiguous:
+            if A.size < B.size:
+                A = A.copy()
+            else:
+                B = B.copy()
         inplace = self.inplace
         if inplace and not C.flags.forc:
             inplace = False
@@ -68,7 +85,7 @@ class Gemm16(Op):
         At = to_gputensor(A)
         Bt = to_gputensor(B)
         Ct = to_gputensor(C)
-        At.dot(At, Bt, Ct, alpha=alpha, beta=beta, relu=self.relu)
+        nerv.dot(At, Bt, Ct, alpha=alpha, beta=beta, relu=False)
         outputs[0][0] = C
 
 
@@ -83,7 +100,7 @@ def local_dot_to_gemm16(node):
         B = gpu_from_host(node.inputs[1])
         C = gpu_alloc(numpy.asarray(0, dtype='float16'),
                       A.shape[0], B.shape[1])
-        return [Gemm16()(C, 1.0, A, B, 0.0)]
+        return [host_from_gpu(Gemm16()(C, 1.0, A, B, 0.0))]
 
 
 @opt.register_opt()
