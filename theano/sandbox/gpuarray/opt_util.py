@@ -8,8 +8,8 @@ from theano.gof import local_optimizer
 from theano.tensor import (DimShuffle, get_scalar_constant_value,
                            NotScalarConstantError)
 
-from .basic_ops import (
-    GpuFromHost, HostFromGpu, host_from_gpu, GpuDimShuffle, GpuElemwise)
+from .basic_ops import GpuFromHost, HostFromGpu, host_from_gpu
+from .elemwise import GpuDimShuffle, GpuElemwise
 
 _one = scal.constant(numpy.asarray(1.0, dtype='float32'))
 
